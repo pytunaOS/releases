@@ -1,0 +1,100 @@
+name: Build pytunaOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Select the version:"
+        required: true
+        type: choice
+        options:
+          - development
+          - stable
+        default: development
+
+jobs:
+  build:
+    name: Build pytunaOS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout profile repository
+        uses: actions/checkout@v4
+        with:
+          repository: pytunaOS/profile
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      - name: Set release information
+        run: |
+          BASE_DATE=$(date +'%Y.%m.%d')
+          BRANCH="${{ github.event.inputs.branch }}"
+
+          if [ "$BRANCH" = "stable" ]; then
+            PREFIX="stable"
+            DISPLAY_NAME="pytunaOS"
+            IS_PRERELEASE=false
+          else
+            PREFIX="dev"
+            DISPLAY_NAME="pytunaOS (DEV)"
+            IS_PRERELEASE=true
+          fi
+
+          SUFFIX=""
+          COUNT=0
+
+          while git rev-parse "${PREFIX}-${BASE_DATE}${SUFFIX}" >/dev/null 2>&1; do
+            COUNT=$((COUNT + 1))
+            SUFFIX="-${COUNT}"
+          done
+
+          VERSION="${BASE_DATE}${SUFFIX}"
+
+          echo "TAG_NAME=${PREFIX}-${VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=${DISPLAY_NAME} ${VERSION}" >> "$GITHUB_ENV"
+          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
+
+      - name: Pull Arch Linux container
+        run: docker pull archlinux:latest
+
+      - name: Build ISO
+        run: |
+          docker run --rm \
+            --privileged \
+            -v "${{ github.workspace }}:/work" \
+            archlinux:latest \
+            bash -c '
+              set -euo pipefail
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm archiso git
+              cd /work
+              mkdir -p iso
+              mkarchiso \
+                -v \
+                -r \
+                -w /tmp/pytuna \
+                -o iso \
+                .
+              cd iso
+              sha256sum *.iso > SHA256SUMS
+            '
+
+      - name: Upload ISO Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytunaOS-${{ github.event.inputs.branch }}
+          path: |
+            ${{ github.workspace }}/iso/*.iso
+            ${{ github.workspace }}/iso/SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          prerelease: ${{ env.IS_PRERELEASE }}
+          generate_release_notes: true
+          files: |
+            ${{ github.workspace }}/iso/*.iso
+            ${{ github.workspace }}/iso/SHA256SUMS
