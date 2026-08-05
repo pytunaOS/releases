@@ -67,7 +67,7 @@ jobs:
             bash -c '
               set -euo pipefail
               pacman -Syu --noconfirm
-              pacman -S --noconfirm archiso git
+              pacman -S --noconfirm archiso git grub
               cd /work
               mkdir -p iso
               mkarchiso \
