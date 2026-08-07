@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    name: Build pytunaOS
+    name: Building pytunaOS
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,6 +66,11 @@ jobs:
             archlinux:latest \
             bash -c '
               set -euo pipefail
+              pacman-key --recv-key D4FE3B0C197EF8C6 --keyserver keyserver.ubuntu.com
+              pacman-key --lsign-key D4FE3B0C197EF8C6
+              pacman -U 'https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-keyring-20260806-1-any.pkg.tar.zst' --noconfirm
+              pacman -U 'https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-mirrorlist-20260806-1-any.pkg.tar.zst' --noconfirm
+              printf '\n[pytuna]\nInclude = /etc/pacman.d/pytuna-mirrorlist\n' | sudo tee -a /etc/pacman.conf
               pacman -Syu --noconfirm
               pacman -S --noconfirm archiso git grub
               cd /work
