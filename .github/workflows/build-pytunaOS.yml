@@ -8,9 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - development
+          - development-niri
+          - development-gnome
           - stable
-        default: development
+        default: development-gnome
 
 jobs:
   build:
