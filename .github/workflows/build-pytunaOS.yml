@@ -10,8 +10,9 @@ on:
         options:
           - development-niri
           - development-gnome
+          - development
           - stable
-        default: development-gnome
+        default: development
 
 jobs:
   build:
