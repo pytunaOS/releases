@@ -8,11 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - development-niri
-          - development-gnome
+          - beta
           - development
           - stable
-        default: development
+        default: beta
 
 jobs:
   build:
@@ -37,9 +36,13 @@ jobs:
             PREFIX="stable"
             DISPLAY_NAME="pytunaOS"
             IS_PRERELEASE=false
-          else
+          elif [ "$BRANCH" = "development" ]; then
             PREFIX="dev"
             DISPLAY_NAME="pytunaOS (DEV)"
+            IS_PRERELEASE=true
+          else
+            PREFIX="beta"
+            DISPLAY_NAME="pytunaOS (BETA)"
             IS_PRERELEASE=true
           fi
 
