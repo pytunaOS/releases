@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - beta
+          - beta-baseline
           - development
           - stable
         default: beta
