@@ -9,7 +9,6 @@ on:
         type: choice
         options:
           - beta
-          - beta-baseline
           - development
           - stable
         default: beta
@@ -18,105 +17,207 @@ jobs:
   build:
     name: Building pytunaOS
     runs-on: ubuntu-latest
+
     permissions:
-      contents: write
+      contents: read
+
     steps:
       - name: Checkout profile repository
         uses: actions/checkout@v4
         with:
           repository: pytunaOS/profile
-          ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+          fetch-depth: 1
 
       - name: Set release information
+        shell: bash
         run: |
-          BASE_DATE=$(date +'%Y.%m.%d')
-          BRANCH="${{ github.event.inputs.branch }}"
+          set -euo pipefail
 
-          if [ "$BRANCH" = "stable" ]; then
-            PREFIX="stable"
-            DISPLAY_NAME="pytunaOS"
-            IS_PRERELEASE=false
-          elif [ "$BRANCH" = "development" ]; then
-            PREFIX="dev"
-            DISPLAY_NAME="pytunaOS (DEV)"
-            IS_PRERELEASE=true
-          else
-            PREFIX="beta"
-            DISPLAY_NAME="pytunaOS (BETA)"
-            IS_PRERELEASE=true
-          fi
+          VERSION="$(date -u +'%Y.%m.%d')"
+          BRANCH="${{ inputs.branch }}"
 
-          SUFFIX=""
-          COUNT=0
+          case "$BRANCH" in
+            stable)
+              PREFIX="stable"
+              ;;
+            development)
+              PREFIX="dev"
+              ;;
+            beta|beta-baseline)
+              PREFIX="beta"
+              ;;
+            *)
+              echo "Unsupported branch: $BRANCH"
+              exit 1
+              ;;
+          esac
 
-          while git rev-parse "${PREFIX}-${BASE_DATE}${SUFFIX}" >/dev/null 2>&1; do
-            COUNT=$((COUNT + 1))
-            SUFFIX="-${COUNT}"
-          done
+          RELEASE_DIRECTORY="${PREFIX}-${VERSION}"
 
-          VERSION="${BASE_DATE}${SUFFIX}"
-
-          echo "TAG_NAME=${PREFIX}-${VERSION}" >> "$GITHUB_ENV"
-          echo "RELEASE_NAME=${DISPLAY_NAME} ${VERSION}" >> "$GITHUB_ENV"
-          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_DIRECTORY=${RELEASE_DIRECTORY}" >> "$GITHUB_ENV"
 
       - name: Pull Arch Linux container
         run: docker pull archlinux:latest
 
       - name: Build ISO
+        shell: bash
         run: |
+          set -euo pipefail
+
           docker run --rm \
             --privileged \
             -v "${{ github.workspace }}:/work" \
             archlinux:latest \
             bash -c '
               set -euo pipefail
+
               pacman-key --init
               pacman-key --populate archlinux
+
               # pytuna repository
-              pacman-key --recv-key D4FE3B0C197EF8C6 --keyserver hkps://keyserver.ubuntu.com
+              pacman-key \
+                --recv-key D4FE3B0C197EF8C6 \
+                --keyserver hkps://keyserver.ubuntu.com
+
               pacman-key --lsign-key D4FE3B0C197EF8C6
-              pacman -U https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-keyring-20260806-1-any.pkg.tar.zst --noconfirm
-              pacman -U https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-mirrorlist-20260806-1-any.pkg.tar.zst --noconfirm
-              echo "[pytuna]" >> /etc/pacman.conf
-              echo "Include = /etc/pacman.d/pytuna-mirrorlist" >> /etc/pacman.conf
+
+              pacman -U \
+                "https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-keyring-20260806-1-any.pkg.tar.zst" \
+                --noconfirm
+
+              pacman -U \
+                "https://raw.githubusercontent.com/pytunaOS/repository/main/x86_64/pytuna-mirrorlist-20260806-1-any.pkg.tar.zst" \
+                --noconfirm
+
+              printf "\n[pytuna]\n" >> /etc/pacman.conf
+              printf "Include = /etc/pacman.d/pytuna-mirrorlist\n" \
+                >> /etc/pacman.conf
+
               # chaotic-aur repository
-              pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
+              pacman-key \
+                --recv-key 3056513887B78AEB \
+                --keyserver hkps://keyserver.ubuntu.com
+
               pacman-key --lsign-key 3056513887B78AEB
-              pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' --noconfirm
-              pacman -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst' --noconfirm
-              echo "[chaotic-aur]" >> /etc/pacman.conf
-              echo "Include = /etc/pacman.d/chaotic-mirrorlist" >> /etc/pacman.conf
+
+              pacman -U \
+                "https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst" \
+                --noconfirm
+
+              pacman -U \
+                "https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst" \
+                --noconfirm
+
+              printf "\n[chaotic-aur]\n" >> /etc/pacman.conf
+              printf "Include = /etc/pacman.d/chaotic-mirrorlist\n" \
+                >> /etc/pacman.conf
+
               pacman -Syu --noconfirm
               pacman -S --noconfirm archiso git grub
+
               cd /work
               mkdir -p iso
+
               mkarchiso \
                 -v \
                 -r \
                 -w /tmp/pytuna \
                 -o iso \
                 .
+
               cd iso
-              sha256sum *.iso > SHA256SUMS
+              sha256sum -- *.iso > SHA256SUMS
             '
 
-      - name: Upload ISO Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytunaOS-${{ github.event.inputs.branch }}
-          path: |
-            ${{ github.workspace }}/iso/*.iso
-            ${{ github.workspace }}/iso/SHA256SUMS
+      - name: Verify and prepare upload files
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: ${{ env.RELEASE_NAME }}
-          prerelease: ${{ env.IS_PRERELEASE }}
-          generate_release_notes: true
-          files: |
-            ${{ github.workspace }}/iso/*.iso
-            ${{ github.workspace }}/iso/SHA256SUMS
+          shopt -s nullglob
+          ISO_FILES=("${{ github.workspace }}"/iso/*.iso)
+
+          if (( ${#ISO_FILES[@]} == 0 )); then
+            echo "No ISO file was generated."
+            exit 1
+          fi
+
+          test -s "${{ github.workspace }}/iso/SHA256SUMS"
+
+          sha256sum \
+            --check "${{ github.workspace }}/iso/SHA256SUMS"
+
+          UPLOAD_DIRECTORY="${RUNNER_TEMP}/sourceforge-upload"
+          mkdir -p "$UPLOAD_DIRECTORY"
+
+          cp -- "${ISO_FILES[@]}" "$UPLOAD_DIRECTORY/"
+          cp -- \
+            "${{ github.workspace }}/iso/SHA256SUMS" \
+            "$UPLOAD_DIRECTORY/"
+
+          echo "UPLOAD_DIRECTORY=${UPLOAD_DIRECTORY}" >> "$GITHUB_ENV"
+
+          echo "Files ready for upload:"
+          ls -lh "$UPLOAD_DIRECTORY"
+
+      - name: Configure SourceForge SSH
+        shell: bash
+        env:
+          SOURCEFORGE_SSH_PRIVATE_KEY: ${{ secrets.SOURCEFORGE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 "$HOME/.ssh"
+
+          printf '%s\n' "$SOURCEFORGE_SSH_PRIVATE_KEY" \
+            > "$HOME/.ssh/pytunaos_sourceforge"
+
+          chmod 600 "$HOME/.ssh/pytunaos_sourceforge"
+
+          ssh-keyscan -H frs.sourceforge.net \
+            >> "$HOME/.ssh/known_hosts"
+
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Create SourceForge release directory
+        shell: bash
+        env:
+          SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIRECTORY="/home/frs/project/pytunaos-iso-releases/${RELEASE_DIRECTORY}"
+
+          printf '%s\n' \
+            "-mkdir ${REMOTE_DIRECTORY}" \
+            "quit" |
+            sftp \
+              -b - \
+              -i "$HOME/.ssh/pytunaos_sourceforge" \
+              -o IdentitiesOnly=yes \
+              "${SOURCEFORGE_USERNAME}@frs.sourceforge.net"
+
+      - name: Upload ISO to SourceForge
+        shell: bash
+        env:
+          SOURCEFORGE_USERNAME: ${{ secrets.SOURCEFORGE_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIRECTORY="/home/frs/project/pytunaos-iso-releases/${RELEASE_DIRECTORY}/"
+
+          rsync \
+            --archive \
+            --verbose \
+            --partial \
+            --append-verify \
+            --progress \
+            --delete-after \
+            -e "ssh -i $HOME/.ssh/pytunaos_sourceforge -o IdentitiesOnly=yes" \
+            "${UPLOAD_DIRECTORY}/" \
+            "${SOURCEFORGE_USERNAME}@frs.sourceforge.net:${REMOTE_DIRECTORY}"
+
+          echo "Upload completed:"
+          echo "https://sourceforge.net/projects/pytunaos-iso-releases/files/${RELEASE_DIRECTORY}/"
