@@ -146,8 +146,10 @@ jobs:
 
           test -s "${{ github.workspace }}/iso/SHA256SUMS"
 
-          sha256sum \
-            --check "${{ github.workspace }}/iso/SHA256SUMS"
+          (
+            cd "$ISO_DIRECTORY"
+            sha256sum --check SHA256SUMS
+          )
 
           UPLOAD_DIRECTORY="${RUNNER_TEMP}/sourceforge-upload"
           mkdir -p "$UPLOAD_DIRECTORY"
