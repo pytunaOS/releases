@@ -44,7 +44,7 @@ jobs:
             development)
               PREFIX="dev"
               ;;
-            beta|beta-baseline)
+            beta)
               PREFIX="beta"
               ;;
             *)
@@ -136,15 +136,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          ISO_DIRECTORY="${{ github.workspace }}/iso"
+
           shopt -s nullglob
-          ISO_FILES=("${{ github.workspace }}"/iso/*.iso)
+          ISO_FILES=("${ISO_DIRECTORY}"/*.iso)
 
           if (( ${#ISO_FILES[@]} == 0 )); then
             echo "No ISO file was generated."
             exit 1
           fi
 
-          test -s "${{ github.workspace }}/iso/SHA256SUMS"
+          test -s "${ISO_DIRECTORY}/SHA256SUMS"
 
           (
             cd "$ISO_DIRECTORY"
@@ -156,7 +158,7 @@ jobs:
 
           cp -- "${ISO_FILES[@]}" "$UPLOAD_DIRECTORY/"
           cp -- \
-            "${{ github.workspace }}/iso/SHA256SUMS" \
+            "${ISO_DIRECTORY}/SHA256SUMS" \
             "$UPLOAD_DIRECTORY/"
 
           echo "UPLOAD_DIRECTORY=${UPLOAD_DIRECTORY}" >> "$GITHUB_ENV"
