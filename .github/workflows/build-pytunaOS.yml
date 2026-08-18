@@ -54,9 +54,11 @@ jobs:
           esac
 
           RELEASE_DIRECTORY="${PREFIX}-${VERSION}"
+          IA_IDENTIFIER="pytunaos-${PREFIX}-${VERSION//./-}-x86_64"
 
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "RELEASE_DIRECTORY=${RELEASE_DIRECTORY}" >> "$GITHUB_ENV"
+          echo "IA_IDENTIFIER=${IA_IDENTIFIER}" >> "$GITHUB_ENV"
 
       - name: Pull Arch Linux container
         run: docker pull archlinux:latest
@@ -153,7 +155,7 @@ jobs:
             sha256sum --check SHA256SUMS
           )
 
-          UPLOAD_DIRECTORY="${RUNNER_TEMP}/sourceforge-upload"
+          UPLOAD_DIRECTORY="${RUNNER_TEMP}/release-upload"
           mkdir -p "$UPLOAD_DIRECTORY"
 
           cp -- "${ISO_FILES[@]}" "$UPLOAD_DIRECTORY/"
@@ -225,3 +227,49 @@ jobs:
 
           echo "Upload completed:"
           echo "https://sourceforge.net/projects/pytunaos-iso-releases/files/${RELEASE_DIRECTORY}/"
+
+      - name: Upload ISO to Internet Archive
+        timeout-minutes: 180
+        shell: bash
+        env:
+          IA_ACCESS_KEY_ID: ${{ secrets.IA_ACCESS_KEY_ID }}
+          IA_SECRET_ACCESS_KEY: ${{ secrets.IA_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          IA_VENV="${RUNNER_TEMP}/internetarchive-venv"
+          python3 -m venv "$IA_VENV"
+          "$IA_VENV/bin/python" -m pip install --upgrade pip internetarchive
+
+          shopt -s nullglob
+          IA_FILES=("${UPLOAD_DIRECTORY}"/*.iso "${UPLOAD_DIRECTORY}/SHA256SUMS")
+
+          if (( ${#IA_FILES[@]} < 2 )); then
+            echo "ISO or SHA256SUMS not found in ${UPLOAD_DIRECTORY}."
+            exit 1
+          fi
+
+          IA_DATE="${VERSION//./-}"
+
+          "$IA_VENV/bin/ia" upload "$IA_IDENTIFIER" \
+            "${IA_FILES[@]}" \
+            --metadata="title:pytunaOS ${VERSION} (${{ inputs.branch }})" \
+            --metadata="creator:pytunaOS Project" \
+            --metadata="date:${IA_DATE}" \
+            --metadata="mediatype:software" \
+            --metadata="collection:open_source_software" \
+            --metadata="description:Official pytunaOS ${{ inputs.branch }} x86_64 installation image." \
+            --metadata="subject:pytunaOS" \
+            --metadata="subject:Linux" \
+            --metadata="subject:Arch Linux" \
+            --metadata="subject:Operating System" \
+            --retries 10 \
+            --checksum
+
+          echo "Internet Archive upload completed:"
+          echo "https://archive.org/details/${IA_IDENTIFIER}"
+
+          for ISO_PATH in "${UPLOAD_DIRECTORY}"/*.iso; do
+            ISO_FILE="$(basename "$ISO_PATH")"
+            echo "https://archive.org/download/${IA_IDENTIFIER}/${ISO_FILE}"
+          done
