@@ -252,6 +252,9 @@ jobs:
           IA_DATE="${VERSION//./-}"
 
           "$IA_VENV/bin/ia" upload "$IA_IDENTIFIER" \
+            --status-check
+
+          "$IA_VENV/bin/ia" upload "$IA_IDENTIFIER" \
             "${IA_FILES[@]}" \
             --metadata="title:pytunaOS ${VERSION} (${{ inputs.branch }})" \
             --metadata="creator:pytunaOS Project" \
@@ -264,8 +267,7 @@ jobs:
             --metadata="subject:Arch Linux" \
             --metadata="subject:Operating System" \
             --retries 10 \
-            --checksum \
-            --status-check
+            --checksum
 
           echo "Internet Archive upload completed:"
           echo "https://archive.org/details/${IA_IDENTIFIER}"
