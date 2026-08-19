@@ -63,7 +63,7 @@ jobs:
           esac
 
           RELEASE_DIRECTORY="${PREFIX}-${VERSION}"
-          IA_IDENTIFIER="pytunaos-${PREFIX}-${VERSION//./-}-x86_64"
+          IA_IDENTIFIER="pytunaos-${PREFIX}-${VERSION//./-}-x86_64-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
 
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "RELEASE_DIRECTORY=${RELEASE_DIRECTORY}" >> "$GITHUB_ENV"
