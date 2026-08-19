@@ -264,7 +264,8 @@ jobs:
             --metadata="subject:Arch Linux" \
             --metadata="subject:Operating System" \
             --retries 10 \
-            --checksum
+            --checksum \
+            --status-check
 
           echo "Internet Archive upload completed:"
           echo "https://archive.org/details/${IA_IDENTIFIER}"
